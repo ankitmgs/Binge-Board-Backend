@@ -114,4 +114,25 @@ router.post("/addItemToLists", async (req, res) => {
   }
 });
 
+// Get all item IDs from all lists
+router.get("/allItemIds/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const lists = await List.find({ userId });
+    let allItemIds = [];
+
+    lists.forEach(list => {
+      list.items.forEach(item => {
+        if (item.id && !allItemIds.includes(item.id)) {
+          allItemIds.push(item.id);
+        }
+      });
+    });
+
+    sendResponse(res, 200, "All item IDs fetched successfully", allItemIds);
+  } catch (err) {
+    sendResponse(res, 500, err.message);
+  }
+});
+
 module.exports = router;
