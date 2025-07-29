@@ -16,7 +16,7 @@ router.post("/", async (req, res) => {
       name,
       userId, // Keep userId as string
       isPin,
-      items: []
+      items: [],
     });
     await list.save();
     sendResponse(res, 201, "List created successfully", list);
@@ -69,7 +69,7 @@ router.post("/addItemToLists", async (req, res) => {
       return sendResponse(res, 400, "No lists selected or invalid format.");
     }
 
-    if (!movieDetail || typeof movieDetail !== 'object') {
+    if (!movieDetail || typeof movieDetail !== "object") {
       return sendResponse(res, 400, "Invalid item details provided.");
     }
 
@@ -80,7 +80,9 @@ router.post("/addItemToLists", async (req, res) => {
     for (const listId of itemIds) {
       const list = await List.findById(listId);
       if (list) {
-        const itemExists = list.items.some(item => item.id === movieDetail.id);
+        const itemExists = list.items.some(
+          (item) => item.id === movieDetail.id
+        );
         if (!itemExists) {
           list.items.push(movieDetail);
           await list.save();
@@ -98,17 +100,127 @@ router.post("/addItemToLists", async (req, res) => {
       message += `Item added to lists: ${addedToLists.join(", ")}. `;
     }
     if (alreadyPresentInLists.length > 0) {
-      message += `Item already present in lists: ${alreadyPresentInLists.join(", ")}. `;
+      message += `Item already present in lists: ${alreadyPresentInLists.join(
+        ", "
+      )}. `;
     }
     if (notFoundLists.length > 0) {
       message += `Lists not found: ${notFoundLists.join(", ")}.`;
     }
 
     if (addedToLists.length === 0 && alreadyPresentInLists.length === 0) {
-      return sendResponse(res, 404, "No lists were updated or found for the given item.");
+      return sendResponse(
+        res,
+        404,
+        "No lists were updated or found for the given item."
+      );
     }
 
-    sendResponse(res, 200, message.trim(), { addedToLists, alreadyPresentInLists, notFoundLists });
+    sendResponse(res, 200, message.trim(), {
+      addedToLists,
+      alreadyPresentInLists,
+      notFoundLists,
+    });
+  } catch (err) {
+    sendResponse(res, 500, err.message);
+  }
+});
+
+router.post("/updateItemToLists", async (req, res) => {
+  try {
+    const { targetListIds, movieDetail, userId } = req.body;
+
+    if (
+      !targetListIds ||
+      !Array.isArray(targetListIds) ||
+      targetListIds.length === 0
+    ) {
+      return sendResponse(res, 400, "No target lists provided.");
+    }
+
+    if (!movieDetail || typeof movieDetail !== "object" || !movieDetail.id) {
+      return sendResponse(res, 400, "Invalid or missing item detail.");
+    }
+
+    const itemId = movieDetail.id;
+    const allLists = await List.find({ userId }); // Optionally: filter by userId if lists are per-user
+
+    const addedToLists = [];
+    const removedFromLists = [];
+    const updatedInLists = [];
+    const ratingUpdatedInLists = [];
+
+    for (const list of allLists) {
+      const hasItem = list.items.some((item) => item.id === itemId);
+      const shouldHaveItem = targetListIds.includes(String(list._id));
+      const itemIndex = list.items.findIndex((item) => item.id === itemId);
+      const existingItem = list.items[itemIndex];
+
+      let updated = false;
+
+      // Always check for userRating difference first
+      if (hasItem && itemIndex !== -1) {
+        if (existingItem.userRating !== movieDetail.userRating) {
+          list.items[itemIndex].userRating = movieDetail.userRating;
+          updated = true;
+          ratingUpdatedInLists.push(list.name);
+        }
+      }
+
+      // Case 1: Add to list
+      if (!hasItem && shouldHaveItem) {
+        list.items.push(movieDetail);
+        addedToLists.push(list.name);
+        await list.save();
+        continue;
+      }
+
+      // Case 2: Remove from list
+      if (hasItem && !shouldHaveItem) {
+        list.items = list.items.filter((item) => item.id !== itemId);
+        removedFromLists.push(list.name);
+        await list.save();
+        continue;
+      }
+
+      // Case 3: Update entire item if it already exists and is in selected list
+      if (hasItem && shouldHaveItem && itemIndex !== -1) {
+        list.items[itemIndex] = {
+          ...movieDetail,
+          userRating: list.items[itemIndex].userRating, // preserve updated rating
+        };
+        updatedInLists.push(list.name);
+        updated = true;
+      }
+
+      if (updated) {
+        await list.save();
+      }
+    }
+
+    // Build message
+    let messageParts = [];
+    if (addedToLists.length)
+      messageParts.push(`Item added to: ${addedToLists.join(", ")}`);
+    if (updatedInLists.length)
+      messageParts.push(`Item updated in: ${updatedInLists.join(", ")}`);
+    if (removedFromLists.length)
+      messageParts.push(`Item removed from: ${removedFromLists.join(", ")}`);
+    if (ratingUpdatedInLists.length)
+      messageParts.push(
+        `User rating updated in: ${ratingUpdatedInLists.join(", ")}`
+      );
+
+    const message = messageParts.length
+      ? messageParts.join(". ") + "."
+      : "No changes made.";
+
+    sendResponse(res, 200, message, {
+      addedToLists,
+      updatedInLists,
+      removedFromLists,
+      ratingUpdatedInLists,
+    });
   } catch (err) {
     sendResponse(res, 500, err.message);
   }
@@ -121,8 +233,8 @@ router.get("/allItemIds/:userId", async (req, res) => {
     const lists = await List.find({ userId });
     let allItemIds = [];
 
-    lists.forEach(list => {
-      list.items.forEach(item => {
+    lists.forEach((list) => {
+      list.items.forEach((item) => {
         if (item.id && !allItemIds.includes(item.id)) {
           allItemIds.push(item.id);
         }
