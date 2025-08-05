@@ -247,4 +247,30 @@ router.get("/allItemIds/:userId", async (req, res) => {
   }
 });
 
+// Get movie details and lists containing the movie for a user
+router.get('/itemInLists/:userId/:itemId', async (req, res) => {
+  try {
+    const { userId, itemId } = req.params;
+    const lists = await List.find({ userId, 'items.id': itemId });
+    let movieDetails = null;
+    const listNames = [];
+    lists.forEach(list => {
+      const foundItem = list.items.find(item => item.id === itemId);
+      if (foundItem) {
+        if (!movieDetails) movieDetails = foundItem;
+        listNames.push(list.name);
+      }
+    });
+    if (!movieDetails) {
+      return sendResponse(res, 404, 'Movie not found in any list for this user');
+    }
+    sendResponse(res, 200, 'Movie details and lists fetched successfully', {
+      movieDetails,
+      lists: listNames
+    });
+  } catch (err) {
+    sendResponse(res, 500, err.message);
+  }
+});
+
 module.exports = router;
